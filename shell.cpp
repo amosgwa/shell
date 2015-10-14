@@ -30,7 +30,7 @@ const char* const WORD_DELIMITERS = " \t\n\"\\'`@><=;|&{(";
 // An external reference to the execution environment
 extern char** environ;
 
-extern vector<string> history_list;
+extern vector<string> event_list;
 
 extern map<string, vector<string> > alias_list;
 
@@ -234,19 +234,19 @@ void local_variable_assignment(vector<string>& tokens) {
 void tokennizeForSpecialHistory(vector<string>& tokens, char* line) {
   string tmpline = "";
 
-  history_list.pop_back();
+  event_list.pop_back();
 
   //If the size of the history is 0 then do nothing.
-  if(history_list.size() == 0){
+  if(event_list.size() == 0){
     cout << "There are no recent events." << endl;
     return;
   }
 
   if (strcmp(line,"!!") == 0 ) {
     // Access the last command which is -2 because !! is added to the last.
-    tmpline = history_list[history_list.size()-1];
+    tmpline = event_list[event_list.size()-1];
     // Add this command to the history;
-    history_list.push_back(tmpline);
+    event_list.push_back(tmpline);
     cout << tmpline << endl;
     tokens = tokenize(tmpline.c_str());
   } else if (line[0] == '!') {
@@ -260,13 +260,13 @@ void tokennizeForSpecialHistory(vector<string>& tokens, char* line) {
     int index = atoi(number.c_str());
     
     // Check if the even is in the list.
-    if (index >= history_list.size() || index == 0) {
+    if (index >= event_list.size() || index == 0) {
       cout << "!" << index << ": event not found" << endl;
     } else {
       // Access the !index
-      tmpline = history_list[index-1];
+      tmpline = event_list[index-1];
       // Add this command to the history.
-      history_list.push_back(tmpline);
+      event_list.push_back(tmpline);
       cout << tmpline << endl;
       tokens = tokenize(tmpline.c_str());
     }
@@ -313,8 +313,10 @@ int main() {
     // If the command is non-empty, attempt to execute it
     if (line[0]) {
 
+      add_history(line);
+
       // Add this command to readline's history
-      history_list.push_back(line);
+      event_list.push_back(line);
 
       // Break the raw input line into tokens
       vector<string> tokens = tokenize(line);

@@ -4,7 +4,7 @@
 
 using namespace std;
 
-vector<string> history_list;
+vector<string> event_list;
 map<string, vector<string> > alias_list;
 
 int com_ls(vector<string>& tokens) {
@@ -128,15 +128,15 @@ int com_exit(vector<string>& tokens) {
 
 int com_history(vector<string>& tokens) {
   // TODO: YOUR CODE GOES HERE
-  for (int i = 1 ; i < history_list.size()+1 && i < 30; i++) {
-    cout << "  " << i << "  " << history_list[i-1] << endl;
+  for (int i = 1 ; i < event_list.size()+1 && i < 30; i++) {
+    cout << "  " << i << "  " << event_list[i-1] << endl;
   }
   return 0;
 }
 
 //update the history list
 void update_history(string command) {
-  history_list.push_back(command);
+  event_list.push_back(command);
 }
 
 string pwd() {
