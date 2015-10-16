@@ -123,7 +123,6 @@ int com_echo(vector<string>& tokens) {
 int com_exit(vector<string>& tokens) {
   // TODO: YOUR CODE GOES HERE
   exit(0);
-  return 0;
 }
 
 
