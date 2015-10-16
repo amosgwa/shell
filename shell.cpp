@@ -43,6 +43,8 @@ map<string, command> builtins;
 // Variables local to the shell
 map<string, string> localvars;
 
+int execute_line(vector<string>& tokens, map<string, command>& builtins);
+
 // Handles external commands, redirects, and pipes.
 int execute_external_command(vector<string> tokens) {
   // TODO: YOUR CODE GOES HERE
@@ -62,19 +64,26 @@ int execute_external_command(vector<string> tokens) {
   if (subprocess == 0) {
     // child process.
     // Generate the arguments for execvp.
-    char** arg = (char**)malloc(sizeof(char*) * tokens.size() + 2);
 
-    for (int i = 0; i < tokens.size(); i++) {
-      arg[i] = convert(tokens[i]);
-    }
 
-    arg[tokens.size()] = NULL;
+    if(commandType(tokens) == 1 || commandType(tokens) == 2) {
+      exitCode = pipeLoop(tokens);
+    } 
+    else {
+      char** arg = (char**)malloc(sizeof(char*) * tokens.size() + 2);
 
-    // Execute the command
-    exitCode = execvp(tokens[0].c_str(), arg);
-    if (exitCode != 0) {
-      perror("Execvp error ");
-      _exit(-1);
+      for (int i = 0; i < tokens.size(); i++) {
+        arg[i] = convert(tokens[i]);
+      }
+
+      arg[tokens.size()] = NULL;
+
+      // Execute the command
+      exitCode = execvp(tokens[0].c_str(), arg);
+      if (exitCode != 0) {
+        perror("Execvp error ");
+        _exit(-1);
+      }
     }
   } else {
     // Parent process.
@@ -96,11 +105,222 @@ char* convert(const string& s) {
   return result;
 }
 
-// Generate the character array from vector<string>
-char* generateCharArr(vector<string> tokens) {
-  // char** resul = malloc(tokens.size());
+// Generate 2d vectors of the tokens for multiple commands.
+vector<vector<string> > genMultiTokens(vector<string> tokens) {
+  vector<vector<string> > result;
+  vector<string> tmp;
+  vector<string>::iterator iter;
+  //cout << "token size is " << tokens.size() << endl;
 
-  return NULL;
+  for (iter = tokens.begin(); iter != tokens.end(); ++iter) {
+    tmp.push_back(*iter);    
+    //cout << *iter << endl;
+    if (*iter == "|") {    
+      tmp.pop_back();
+      result.push_back(tmp);  
+      tmp.clear();
+    }
+  }
+  result.push_back(tmp);
+  tmp.clear();
+  return result;
+}
+
+void closePipes(int pipes[],int size) {
+  for(int i = 0; i < size; i++) {
+    close(pipes[i]);
+  }
+}
+
+// Handles piping.
+int pipeLoop(vector<string> tokens) {
+  // genMultiTokens(tokens);
+  vector<vector<string> > multiTokens=genMultiTokens(tokens);
+  //cout << "Size of multiTokens is " << multiTokens.size() << endl;
+  int status;
+  int statusArr[multiTokens.size()];
+  cout << multiTokens.size() << endl;
+  int pipefdsz = (multiTokens.size()-1) * 2;
+  int pipefd[pipefdsz];  // need (n-1)*2 file descriptors
+
+  pid_t waitresult;
+  pid_t forkArr[multiTokens.size()]; // need n amount of forks for each command
+
+  int return_value = -1;
+
+  // make pipe
+  for(int i = 0; i < pipefdsz ; i+=2) {
+    cout << i << endl;
+    pipe(pipefd+i);
+  }
+
+  // We have 2 fds
+  // pipefd[0] = read end of cat -> grep pipe
+  // pipefd[1] = write end of cat -> grep pipe
+  // 0 std in , 1 std out, 2 std error
+
+  // Loop forArr
+  for(int i = 0; i < multiTokens.size(); i++) {
+    if((forkArr[i] = fork()) == -1) {
+      perror("Pipes fork error ");
+      exit(-1);
+    }
+
+    if(forkArr[i] == 0) {
+      // First index
+      if(i==0) {
+        dup2(pipefd[1],1);
+      } else if ( i == multiTokens.size() - 1) {
+        // Last index
+        dup2(pipefd[multiTokens.size() - 1],0);
+      } else {
+        // Middle
+        dup2(pipefd[i*2],0);
+        dup2(pipefd[i*2+1],1);
+      }      
+      cout<<"closing pipes now"<<endl;
+      closePipes(pipefd,pipefdsz);
+
+      cout<<"Pipes closed"<<endl;
+      //execute the command
+      return_value = execute_line(multiTokens[i],builtins);
+    }
+  }
+
+  // close the unused pipes
+  closePipes(pipefd, pipefdsz);
+
+  // Check the status
+  for(int i = 0; i < multiTokens.size(); i++) {
+    waitresult = waitpid(forkArr[i], &status, WUNTRACED);
+    statusArr[i] = status;
+  }
+  
+  // Success
+  if (statusArr[multiTokens.size()-1] == 0) {
+    return_value = 0;
+  }
+
+  exit(return_value);
+  return return_value;
+}
+
+// Handles piping.
+int pipes(vector<string> tokens) {
+  // genMultiTokens(tokens);
+  int status;
+  int statusArr[3];
+  vector<vector<string> > multiTokens=genMultiTokens(tokens);
+  //cout << "Size of multiTokens is " << multiTokens.size() << endl;
+
+  int pipefd[4];  // need 4 file descriptors
+  pid_t subprocess;
+  pid_t waitresult;
+
+  pid_t forkArr[multiTokens.size()];
+
+  int return_value = -1;
+
+  // make a pipe
+  pipe(pipefd); // 1st pipe
+  pipe(pipefd+2); // second pipe
+
+  // We have 2 fds
+  // pipefd[0] = read end of cat -> grep pipe
+  // pipefd[1] = write end of cat -> grep pipe
+  // 0 std in , 1 std out, 2 std error
+
+  if((forkArr[0]=fork()) == -1) {
+    perror("pipes fork error ");
+    exit(1);
+  }
+
+  if (forkArr[0] == 0) {
+    // 1st child
+    // Replace STD out of A with write 1st pipe
+    dup2(pipefd[1],1);
+
+    // close the unused pipes
+    close(pipefd[0]);
+    close(pipefd[1]);
+    close(pipefd[2]);
+    close(pipefd[3]);
+
+    cout << "Execute "<< multiTokens[0][0] << endl;
+    // execute the A
+    return_value = execute_line(multiTokens[0],builtins);
+
+  } 
+  else {
+    // Second child of fork
+    if((forkArr[1]=fork()) == 0) {
+
+      // Replace STD in of B with read 1st pipe
+      dup2(pipefd[0],0);
+      // Replace STD out of B with write 2nd pipe
+      dup2(pipefd[3],1);
+
+      // close the unused pipes
+      close(pipefd[0]);
+      close(pipefd[1]);
+      close(pipefd[2]);
+      close(pipefd[3]);
+
+      cout << "Execute "<< multiTokens[1][0] << endl;
+      // execute the cat
+      return_value = execute_line(multiTokens[1],builtins);
+    }
+    else {
+      // Third child of fork
+      if((forkArr[2]=fork()) == 0) {
+
+        // Replace STD in of C with read 2nd pipe
+        dup2(pipefd[2],0);
+
+        // close the unused pipes
+        close(pipefd[0]);
+        close(pipefd[1]);
+        close(pipefd[2]);
+        close(pipefd[3]);
+
+        cout << "Execute "<< multiTokens[2][0] << endl;
+        // execute the cat
+        return_value = execute_line(multiTokens[2],builtins);
+      }
+    }
+  }
+  // close the unused pipes
+  close(pipefd[0]);
+  close(pipefd[1]);
+  close(pipefd[2]);
+  close(pipefd[3]);
+
+  for(int i = 0; i < 3; i++) {
+    waitresult = waitpid(forkArr[i], &status, WUNTRACED);
+    statusArr[i] = status;
+  }
+  
+  // Success
+  if (statusArr[2] == 0) {
+    return_value = 0;
+  }
+
+  exit(return_value);
+  return return_value;
+}
+
+// Check the command type.
+int commandType(vector<string> tokens) {
+  int command = 0;
+  vector<string>::iterator iter;
+  for (iter = tokens.begin(); iter != tokens.end(); iter++) {
+    if (*iter == "|") {
+      command = 1;
+    } else if (*iter == ">>" | *iter == "<" | *iter == ">") {
+      command = 2;
+    }
+  }
+  return command;
 }
 
 // Return a string representing the prompt to display to the user. It needs to
@@ -215,8 +435,14 @@ vector<string> tokenize(const char* line) {
 // directly invoking the built-in command.
 int execute_line(vector<string>& tokens, map<string, command>& builtins) {
   int return_value = 0;
-
-  if (tokens.size() != 0) {
+  cout << ">>>>>>>>>>>>>executing>>>>>>>>>>>>>>>" << endl;
+  for(int i = 0; i < tokens.size(); i++){
+    cout<<tokens[i] << "-";
+  }
+  cout << endl;
+  if (commandType(tokens) == 1 || commandType(tokens) == 2) {
+    return_value = execute_external_command(tokens);
+  } else if (tokens.size() != 0) {
     map<string, command>::iterator cmd = builtins.find(tokens[0]);
 
     if (cmd == builtins.end()) {

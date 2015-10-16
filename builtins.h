@@ -55,3 +55,9 @@ string pwd();
 
 // Helper functions
 char *convert(const string &s);
+
+int commandType(vector<string> tokens);
+
+int pipes(vector<string> tokens);
+
+int pipeLoop(vector<string> tokens);
