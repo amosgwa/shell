@@ -65,13 +65,11 @@ int execute_external_command(vector<string> tokens) {
     // child process.
     // Generate the arguments for execvp.
 
+    if (commandType(tokens) == 1 || commandType(tokens) == 2) {
+      // exitCode = pipes(tokens);
+      exitCode = pipeLoop(tokens);
 
-    if(commandType(tokens) == 1 || commandType(tokens) == 2) {    
-      //exitCode = pipes(tokens);
-      exitCode = pipeLoop(tokens);  
-
-    } 
-    else {
+    } else {
       char** arg = (char**)malloc(sizeof(char*) * tokens.size() + 2);
 
       for (int i = 0; i < tokens.size(); i++) {
@@ -112,14 +110,14 @@ vector<vector<string> > genMultiTokens(vector<string> tokens) {
   vector<vector<string> > result;
   vector<string> tmp;
   vector<string>::iterator iter;
-  //cout << "token size is " << tokens.size() << endl;
+  // cout << "token size is " << tokens.size() << endl;
 
   for (iter = tokens.begin(); iter != tokens.end(); ++iter) {
-    tmp.push_back(*iter);    
-    //cout << *iter << endl;
-    if (*iter == "|") {    
+    tmp.push_back(*iter);
+    // cout << *iter << endl;
+    if (*iter == "|") {
       tmp.pop_back();
-      result.push_back(tmp);  
+      result.push_back(tmp);
       tmp.clear();
     }
   }
@@ -128,67 +126,95 @@ vector<vector<string> > genMultiTokens(vector<string> tokens) {
   return result;
 }
 
-void closePipes(int pipes[],int size) {
-  for(int i = 0; i < size; i++) {
+void closePipes(int pipes[], int size) {
+  for (int i = 0; i < size; i++) {
     close(pipes[i]);
   }
 }
 
 // Handles piping.
+// The input is 2d vector of commands
+// i.e : [ls],[cat],[grep,shell.cpp],[cut,-d,1-2]
 int pipeLoop(vector<string> tokens) {
-  vector<vector<string> > multiTokens=genMultiTokens(tokens);
+  vector<vector<string> > multiTokens = genMultiTokens(tokens);
+  // Need this for recording the status of each child.
   int status;
   int statusArr[multiTokens.size()];
-  int pipefdsz = (multiTokens.size()-1) * 2;
-  int pipefd[pipefdsz];  // need (n-1)*2 file descriptors
 
+  // Initialize the pipes.
+  // File descriptor size should be (n-1)*2 because there are 2 ends
+  // in each pipe (write(1) and read(0)). i.e A <-> B <-> C
+  // STD_IN : 0, STD_OUT : 1, STD_ERR : 2
+  int pipeFdSize = (multiTokens.size() - 1) * 2;
+  int pipes[pipeFdSize];
+
+  // Wait for each child.
   pid_t waitresult;
-  pid_t forkArr[multiTokens.size()]; // need n amount of forks for each command
 
+  // Initilize the fork() array depending on the size of the commands.
+  pid_t forkArr[multiTokens.size()];
+
+  // 0 : success , -1 : error
   int return_value = -1;
 
-  // make pipe
-  for(int i = 0; i < pipefdsz ; i+=2) {
-    pipe(pipefd+i);
+  // Create the pipes. Notice here that we are offsetting by 2.
+  // because a pipe has two ends which requires two slots in the array.
+  for (int i = 0; i < pipeFdSize; i += 2) {
+    pipe(pipes + i);
   }
 
-  // Loop forArr
-  for(int i = 0; i < multiTokens.size(); i++) {
-    if((forkArr[i] = fork()) == -1) {
+  // Now the annoying part.
+  for (int i = 0; i < multiTokens.size(); i++) {
+    // Call fork() and check error.
+    if ((forkArr[i] = fork()) == -1) {
       perror("Pipes fork error ");
       exit(-1);
     }
 
-    if(forkArr[i] == 0) {
-      // First index
-      if(i==0) {
-        dup2(pipefd[1],1);
-      } else if ( i == multiTokens.size() - 1) {
-        // Last index
-        dup2(pipefd[2*(multiTokens.size()-1)-2],0);
+    // Child process should execute the commands. Before we do that
+    // we have to put a pipe between the parent process and the
+    // child process. We will use dup2 because it allows us to set
+    // STD_OUT and STD_IN for a specified process.
+    if (forkArr[i] == 0) {
+      // We need to take care of the special cases : first pipe
+      // and last pipe. The pipes in the middle have same behavior.
+      // i.e : A<->B<->C<->D<->E
+      if (i == 0) {
+        // First pipe. Duplicate a file descriptor to STD_OUT.
+        // A <-> B and A's out is set to the pipe's write.
+        dup2(pipes[1], 1);
+      } else if (i == multiTokens.size() - 1) {
+        // Last index. A<->B...<->D and the last's command needs to read
+        // from the pipe. Thus, we set the last pipe's read to STD_IN
+        // from previous command.
+        dup2(pipes[2 * (multiTokens.size() - 1) - 2], 0);
       } else {
-        // Middle
-        dup2(pipefd[2*(i-1)],0);
-        dup2(pipefd[(2*i)+1],1);
-      }      
-      closePipes(pipefd,pipefdsz);
-      //execute the command
-      return_value = execute_line(multiTokens[i],builtins);
+        // Middle pipes. A...<->C<->...E We want to read the STD_OUT from B
+        // to the pipe before C and write STD_IN to the pipe for the next
+        // command.
+        dup2(pipes[2 * (i - 1)], 0);
+        dup2(pipes[(2 * i) + 1], 1);
+      }
+      // Always make sure to close the pipes. So then, the parent knows if
+      // the child has reached to the end of file.
+      closePipes(pipes, pipeFdSize);
+      // Execute the command
+      return_value = execute_line(multiTokens[i], builtins);
       exit(return_value);
-    }     
+    }
   }
 
-  // close the unused pipes
-  closePipes(pipefd, pipefdsz);
+  // This is the parent process.
+  closePipes(pipes, pipeFdSize);
 
-  // Check the status
-  for(int i = 0; i < multiTokens.size(); i++) {
+  // Check the status of each child and wait for finishing the execution.
+  for (int i = 0; i < multiTokens.size(); i++) {
     waitresult = waitpid(forkArr[i], &status, WUNTRACED);
     statusArr[i] = status;
   }
-  
-  // Success
-  if (statusArr[multiTokens.size()-1] == 0) {
+
+  // Last status should indicate the success of the piping.
+  if (statusArr[multiTokens.size() - 1] == 0) {
     return_value = 0;
   }
 
@@ -201,8 +227,8 @@ int pipes(vector<string> tokens) {
   // genMultiTokens(tokens);
   int status;
   int statusArr[3];
-  vector<vector<string> > multiTokens=genMultiTokens(tokens);
-  //cout << "Size of multiTokens is " << multiTokens.size() << endl;
+  vector<vector<string> > multiTokens = genMultiTokens(tokens);
+  // cout << "Size of multiTokens is " << multiTokens.size() << endl;
 
   int pipefd[4];  // need 4 file descriptors
   pid_t subprocess;
@@ -213,25 +239,25 @@ int pipes(vector<string> tokens) {
   int return_value = -1;
 
   // make a pipe
-  pipe(pipefd); // 1st pipe
-  pipe(pipefd+2); // second pipe
+  pipe(pipefd);      // 1st pipe
+  pipe(pipefd + 2);  // second pipe
 
   // We have 2 fds
   // pipefd[0] = read end of cat -> grep pipe
   // pipefd[1] = write end of cat -> grep pipe
   // 0 std in , 1 std out, 2 std error
 
-  if((forkArr[0]=fork()) == -1) {
+  if ((forkArr[0] = fork()) == -1) {
     perror("pipes fork error ");
     exit(1);
   }
 
   if (forkArr[0] == 0) {
-          cout << "child | " << forkArr[0] << " | " << getpid() << endl;
+    cout << "child | " << forkArr[0] << " | " << getpid() << endl;
 
     // 1st child
     // Replace STD out of A with write 1st pipe
-    dup2(pipefd[1],1);
+    dup2(pipefd[1], 1);
 
     // close the unused pipes
     close(pipefd[0]);
@@ -239,20 +265,19 @@ int pipes(vector<string> tokens) {
     close(pipefd[2]);
     close(pipefd[3]);
 
-    //cout << "Execute "<< multiTokens[0][0] << endl;
+    // cout << "Execute "<< multiTokens[0][0] << endl;
     // execute the A
-    return_value = execute_line(multiTokens[0],builtins);
+    return_value = execute_line(multiTokens[0], builtins);
 
-  } 
-  else {
+  } else {
     // Second child of fork
-    if((forkArr[1]=fork()) == 0) {
-            cout << "child | " << forkArr[1] << " | " << getpid() << endl;
+    if ((forkArr[1] = fork()) == 0) {
+      cout << "child | " << forkArr[1] << " | " << getpid() << endl;
 
       // Replace STD in of B with read 1st pipe
-      dup2(pipefd[0],0);
+      dup2(pipefd[0], 0);
       // Replace STD out of B with write 2nd pipe
-      dup2(pipefd[3],1);
+      dup2(pipefd[3], 1);
 
       // close the unused pipes
       close(pipefd[0]);
@@ -260,17 +285,16 @@ int pipes(vector<string> tokens) {
       close(pipefd[2]);
       close(pipefd[3]);
 
-      //cout << "Execute "<< multiTokens[1][0] << endl;
+      // cout << "Execute "<< multiTokens[1][0] << endl;
       // execute the cat
-      return_value = execute_line(multiTokens[1],builtins);
-    }
-    else {
+      return_value = execute_line(multiTokens[1], builtins);
+    } else {
       // Third child of fork
-      if((forkArr[2]=fork()) == 0) {
-              cout << "child | " << forkArr[2] << " | " << getpid() << endl;
+      if ((forkArr[2] = fork()) == 0) {
+        cout << "child | " << forkArr[2] << " | " << getpid() << endl;
 
         // Replace STD in of C with read 2nd pipe
-        dup2(pipefd[2],0);
+        dup2(pipefd[2], 0);
 
         // close the unused pipes
         close(pipefd[0]);
@@ -278,9 +302,9 @@ int pipes(vector<string> tokens) {
         close(pipefd[2]);
         close(pipefd[3]);
 
-        //cout << "Execute "<< multiTokens[2][0] << endl;
+        // cout << "Execute "<< multiTokens[2][0] << endl;
         // execute the cat
-        return_value = execute_line(multiTokens[2],builtins);
+        return_value = execute_line(multiTokens[2], builtins);
       }
     }
   }
@@ -289,13 +313,13 @@ int pipes(vector<string> tokens) {
   close(pipefd[1]);
   close(pipefd[2]);
   close(pipefd[3]);
-        cout << "parent | " << getpid() << endl;
+  cout << "parent | " << getpid() << endl;
 
-  for(int i = 0; i < 3; i++) {
+  for (int i = 0; i < 3; i++) {
     waitresult = waitpid(forkArr[i], &status, WUNTRACED);
     statusArr[i] = status;
   }
-  
+
   // Success
   if (statusArr[2] == 0) {
     return_value = 0;
@@ -432,8 +456,8 @@ vector<string> tokenize(const char* line) {
 int execute_line(vector<string>& tokens, map<string, command>& builtins) {
   int return_value = 0;
   cout << ">>>>>>>>>>>>>executing>>>>>>>>>>>>>>>" << endl;
-  for(int i = 0; i < tokens.size(); i++){
-    cout<<tokens[i] << "-";
+  for (int i = 0; i < tokens.size(); i++) {
+    cout << tokens[i] << "-";
   }
   cout << endl;
   if (commandType(tokens) == 1 || commandType(tokens) == 2) {
