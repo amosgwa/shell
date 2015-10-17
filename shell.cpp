@@ -161,8 +161,7 @@ vector<string> extractDirection(vector<string> tokens) {
 
 void closePipes(int pipes[], int size, int except) {
   for (int i = 0; i < size; i++) {
-    if (i != except)
-      close(pipes[i]);
+    if (i != except) close(pipes[i]);
   }
 }
 
@@ -295,7 +294,7 @@ string get_prompt(int return_value) {
   // TODO: YOUR CODE GOES HERE
   string emocon = return_value ? ":(" : ":)";
 
-  return pwd() + "prompt " + emocon + " $ "; // replace with your own code
+  return pwd() + "prompt " + emocon + " $ ";  // replace with your own code
 }
 
 // Return one of the matches, or NULL if there are no more.
@@ -479,8 +478,7 @@ void local_variable_assignment(vector<string> &tokens) {
   vector<string>::iterator token = tokens.begin();
 
   // Return if the token is alias so it wouldn't remove the key=value
-  if (*token == "alias")
-    return;
+  if (*token == "alias") return;
 
   while (token != tokens.end()) {
     string::size_type eq_pos = token->find("=");
