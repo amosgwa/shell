@@ -32,7 +32,7 @@ extern char **environ;
 
 extern vector<string> event_list;
 
-extern map<string, vector<string>> alias_list;
+extern map<string, vector<string> > alias_list;
 
 // Define 'command' as a type for built-in commands
 typedef int (*command)(vector<string> &);
@@ -118,8 +118,8 @@ char *convert(const string &s) {
 }
 
 // Generate 2d vectors of the tokens for multiple commands.
-vector<vector<string>> genMultiTokens(vector<string> tokens) {
-  vector<vector<string>> result;
+vector<vector<string> > genMultiTokens(vector<string> tokens) {
+  vector<vector<string> > result;
   vector<string> tmp;
   vector<string>::iterator iter;
   // cout << "token size is " << tokens.size() << endl;
@@ -169,7 +169,7 @@ void closePipes(int pipes[], int size, int except) {
 // The input is 2d vector of commands
 // i.e : [ls],[cat],[grep,shell.cpp],[cut,-d,1-2]
 int pipeAndFrd(vector<string> tokens) {
-  vector<vector<string>> multiTokens = genMultiTokens(tokens);
+  vector<vector<string> > multiTokens = genMultiTokens(tokens);
   vector<string> direction = extractDirection(tokens);
   // Need this for recording the status of each child.
   int status;
@@ -586,7 +586,7 @@ int main() {
 
       // Check if the command is in the alias.
       // If so replace the tokens with the commands
-      map<string, vector<string>>::iterator aliasIter =
+      map<string, vector<string> >::iterator aliasIter =
           alias_list.find(tokens[0]);
       if (aliasIter != alias_list.end()) {
         tokens = aliasIter->second;
