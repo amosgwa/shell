@@ -1,0 +1,50 @@
+>>>>>>>>>>>>>executing>>>>>>>>>>>>>>>
+cat-
+command size 1
+command 0 : 0 command 1 : 0 command 2 : 0
+>>>>>>>>>>>>>executing>>>>>>>>>>>>>>>
+ls-
+command size 1
+command 0 : 0 command 1 : 0 command 2 : 0
+home
+shell.cpp~
+makefile
+shell.cpp
+..
+tmp
+builtins.cpp
+.
+README.md
+pipetest
+builtins.h
+myshell
+builtins.h~
+builtins.cpp~
+.git
+>>>>>>>>>>>>>executing>>>>>>>>>>>>>>>
+cut--b-1-3-
+command size 3
+command 0 : 0 command 1 : 0 command 2 : 0
+>>>
+cat
+com
+com
+>>>
+ls-
+com
+com
+hom
+she
+mak
+she
+..
+tmp
+bui
+.
+REA
+pip
+bui
+mys
+bui
+bui
+.gi
