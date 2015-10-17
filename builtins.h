@@ -56,8 +56,11 @@ string pwd();
 // Helper functions
 char *convert(const string &s);
 
+// Check the command type for file redirection > >> and <.
 vector<int> commandType(vector<string> tokens);
 
-int pipes(vector<string> tokens);
+// Create pipes and handle fileredirection.
+int pipeAndFrd(vector<string> tokens);
 
-int pipeLoop(vector<string> tokens);
+// Run commands in background.
+int runBackground(vector<string>& tokens);

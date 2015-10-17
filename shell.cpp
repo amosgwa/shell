@@ -25,17 +25,17 @@
 using namespace std;
 
 // The characters that readline will use to delimit words
-const char* const WORD_DELIMITERS = " \t\n\"\\'`@><=;|&{(";
+const char *const WORD_DELIMITERS = " \t\n\"\\'`@><=;|&{(";
 
 // An external reference to the execution environment
-extern char** environ;
+extern char **environ;
 
 extern vector<string> event_list;
 
-extern map<string, vector<string> > alias_list;
+extern map<string, vector<string>> alias_list;
 
 // Define 'command' as a type for built-in commands
-typedef int (*command)(vector<string>&);
+typedef int (*command)(vector<string> &);
 
 // A mapping of internal commands to their corresponding functions
 map<string, command> builtins;
@@ -43,7 +43,10 @@ map<string, command> builtins;
 // Variables local to the shell
 map<string, string> localvars;
 
-int execute_line(vector<string>& tokens, map<string, command>& builtins);
+int execute_line(vector<string> &tokens, map<string, command> &builtins);
+
+// Count the background process ID.
+static int backgroundProcess = 0;
 
 // Handles external commands, redirects, and pipes.
 int execute_external_command(vector<string> tokens) {
@@ -67,17 +70,19 @@ int execute_external_command(vector<string> tokens) {
     vector<int> commandVar = commandType(tokens);
     if (commandVar[0] || commandVar[1] || commandVar[2]) {
       // exitCode = pipes(tokens);
-      cout << "command 0 : " << commandVar[0] << " command 1 : " << commandVar[1] << " command 2 : " << commandVar[2] << endl;
-      if(!(commandVar[0] && commandVar[2]) && !(commandVar[1] && commandVar[2])) {
-        exitCode = pipeLoop(tokens);
-      }
-      else {
-        cout << "< cannot be combined with other file redirection. " << endl; 
+      // cout << "command 0 : " << commandVar[0]
+      //     << " command 1 : " << commandVar[1]
+      //     << " command 2 : " << commandVar[2] << endl;
+      if (!(commandVar[0] && commandVar[2]) &&
+          !(commandVar[1] && commandVar[2])) {
+        exitCode = pipeAndFrd(tokens);
+      } else {
+        cout << "< cannot be combined with other file redirection. " << endl;
         return exitCode;
       }
 
     } else {
-      char** arg = (char**)malloc(sizeof(char*) * tokens.size() + 2);
+      char **arg = (char **)malloc(sizeof(char *) * tokens.size() + 2);
 
       for (int i = 0; i < tokens.size(); i++) {
         arg[i] = convert(tokens[i]);
@@ -106,15 +111,15 @@ int execute_external_command(vector<string> tokens) {
 }
 
 // Converter for transform
-char* convert(const string& s) {
-  char* result = new char[s.size() + 1];
+char *convert(const string &s) {
+  char *result = new char[s.size() + 1];
   strcpy(result, s.c_str());
   return result;
 }
 
 // Generate 2d vectors of the tokens for multiple commands.
-vector<vector<string> > genMultiTokens(vector<string> tokens) {
-  vector<vector<string> > result;
+vector<vector<string>> genMultiTokens(vector<string> tokens) {
+  vector<vector<string>> result;
   vector<string> tmp;
   vector<string>::iterator iter;
   // cout << "token size is " << tokens.size() << endl;
@@ -130,7 +135,7 @@ vector<vector<string> > genMultiTokens(vector<string> tokens) {
       tmp.pop_back();
       result.push_back(tmp);
       return result;
-     }
+    }
   }
   result.push_back(tmp);
   tmp.clear();
@@ -138,45 +143,47 @@ vector<vector<string> > genMultiTokens(vector<string> tokens) {
 }
 
 // Get direction tokens from a given line.
-vector<string > extractDirection(vector<string> tokens) {
-vector<string> result(2);
-vector<string>::iterator iter;
-int found = 0;
-for(int i = 0; i < tokens.size(); i++) {
-  if(tokens[i] == ">>" || tokens[i] == ">" || tokens[i] == "<" || found != 0) {
-    cout << "found it " << endl;
-    result[found] = tokens[i];
-    found++;
+vector<string> extractDirection(vector<string> tokens) {
+  vector<string> result(2);
+  vector<string>::iterator iter;
+  int found = 0;
+  for (int i = 0; i < tokens.size(); i++) {
+    if (tokens[i] == ">>" || tokens[i] == ">" || tokens[i] == "<" ||
+        found != 0) {
+      // cout << "found it " << endl;
+      result[found] = tokens[i];
+      found++;
+    }
   }
-}
-cout << result[0] << " : " << result[1] << endl;
-return result;
+  // cout << result[0] << " : " << result[1] << endl;
+  return result;
 }
 
 void closePipes(int pipes[], int size, int except) {
   for (int i = 0; i < size; i++) {
-    if(i != except) close(pipes[i]);
+    if (i != except)
+      close(pipes[i]);
   }
 }
 
 // Handles piping.
 // The input is 2d vector of commands
 // i.e : [ls],[cat],[grep,shell.cpp],[cut,-d,1-2]
-int pipeLoop(vector<string> tokens) {
-  vector<vector<string> > multiTokens = genMultiTokens(tokens);
+int pipeAndFrd(vector<string> tokens) {
+  vector<vector<string>> multiTokens = genMultiTokens(tokens);
   vector<string> direction = extractDirection(tokens);
   // Need this for recording the status of each child.
   int status;
   int statusArr[multiTokens.size()];
 
   // Handle file redirection if there is a w and a.
-  if(direction.size() >= 2) {
-    if(direction[0] == ">") {
-      FILE * createCat = freopen(direction[1].c_str(),"w",stdout);
+  if (direction.size() >= 2) {
+    if (direction[0] == ">") {
+      FILE *createCat = freopen(direction[1].c_str(), "w", stdout);
     } else if (direction[0] == ">>") {
-      FILE * createCat = freopen(direction[1].c_str(),"a",stdout);
+      FILE *createCat = freopen(direction[1].c_str(), "a", stdout);
     } else if (direction[0] == "<") {
-      FILE * createCat = freopen(direction[1].c_str(),"r",stdin);
+      FILE *createCat = freopen(direction[1].c_str(), "r", stdin);
     }
   }
 
@@ -260,7 +267,7 @@ int pipeLoop(vector<string> tokens) {
   // Close the files that are opened
   fclose(stdout);
   fclose(stdin);
-  
+
   exit(return_value);
   return return_value;
 }
@@ -288,19 +295,19 @@ string get_prompt(int return_value) {
   // TODO: YOUR CODE GOES HERE
   string emocon = return_value ? ":(" : ":)";
 
-  return pwd() + "prompt " + emocon + " $ ";  // replace with your own code
+  return pwd() + "prompt " + emocon + " $ "; // replace with your own code
 }
 
 // Return one of the matches, or NULL if there are no more.
-char* pop_match(vector<string>& matches) {
+char *pop_match(vector<string> &matches) {
   if (matches.size() > 0) {
-    const char* match = matches.back().c_str();
+    const char *match = matches.back().c_str();
 
     // Delete the last element
     matches.pop_back();
 
     // We need to return a copy, because readline deallocates when done
-    char* copy = (char*)malloc(strlen(match) + 1);
+    char *copy = (char *)malloc(strlen(match) + 1);
     strcpy(copy, match);
 
     return copy;
@@ -310,10 +317,32 @@ char* pop_match(vector<string>& matches) {
   return NULL;
 }
 
+// Run a command in the background.
+int runBackground(vector<string> &tokens) {
+  int return_value = 0;
+  pid_t subprocess;
+
+  if ((subprocess = fork()) == -1) {
+    perror("Running in background error ");
+    exit(1);
+  }
+  if (subprocess == 0) {
+    // set pgid.
+    setpgid(0, 0);
+    // Remove the &.
+    tokens.pop_back();
+    // Execute the command.
+    return_value = execute_line(tokens, builtins);
+  } else {
+    cout << "[" << backgroundProcess++ << "] " << subprocess << endl;
+  }
+  return return_value;
+}
+
 // Generates environment variables for readline completion. This function will
 // be called multiple times by readline and will return a single cstring each
 // time.
-char* environment_completion_generator(const char* text, int state) {
+char *environment_completion_generator(const char *text, int state) {
   // A list of all the matches;
   // Must be static because this function is called repeatedly
   static vector<string> matches;
@@ -330,7 +359,7 @@ char* environment_completion_generator(const char* text, int state) {
 
 // Generates commands for readline completion. This function will be called
 // multiple times by readline and will return a single cstring each time.
-char* command_completion_generator(const char* text, int state) {
+char *command_completion_generator(const char *text, int state) {
   // A list of all the matches;
   // Must be static because this function is called repeatedly
   static vector<string> matches;
@@ -347,8 +376,8 @@ char* command_completion_generator(const char* text, int state) {
 
 // This is the function we registered as rl_attempted_completion_function. It
 // attempts to complete with a command, variable name, or filename.
-char** word_completion(const char* text, int start, int end) {
-  char** matches = NULL;
+char **word_completion(const char *text, int start, int end) {
+  char **matches = NULL;
 
   if (start == 0) {
     rl_completion_append_character = ' ';
@@ -366,7 +395,7 @@ char** word_completion(const char* text, int start, int end) {
 
 // Transform a C-style string into a C++ vector of string tokens, delimited by
 // whitespace.
-vector<string> tokenize(const char* line) {
+vector<string> tokenize(const char *line) {
   vector<string> tokens;
   string token;
 
@@ -391,16 +420,24 @@ vector<string> tokenize(const char* line) {
 
 // Executes a line of input by either calling execute_external_command or
 // directly invoking the built-in command.
-int execute_line(vector<string>& tokens, map<string, command>& builtins) {
+int execute_line(vector<string> &tokens, map<string, command> &builtins) {
   int return_value = 0;
-  cout << ">>>>>>>>>>>>>executing>>>>>>>>>>>>>>>" << endl;
-  for (int i = 0; i < tokens.size(); i++) {
-    cout << tokens[i] << "-";
+  // cout << ">>>>>>>>>>>>>executing>>>>>>>>>>>>>>>" << endl;
+  // for (int i = 0; i < tokens.size(); i++) {
+  //  cout << tokens[i] << "-";
+  //}
+  // cout << endl;
+  // First check if it's background command.
+  if (tokens[tokens.size() - 1] == "&") {
+    return_value = runBackground(tokens);
+    return return_value;
   }
-  cout << endl;
+
   // First check if it's piping. Then execute.
   vector<int> commandVar = commandType(tokens);
-  cout << "command size " << tokens.size() << endl << "command 0 : " << commandVar[0] << " command 1 : " << commandVar[1] << " command 2 : " << commandVar[2] << endl;
+  // cout << "command size " << tokens.size() << endl
+  //     << "command 0 : " << commandVar[0] << " command 1 : " << commandVar[1]
+  //    << " command 2 : " << commandVar[2] << endl;
   if (commandVar[0] || commandVar[1] || commandVar[2]) {
     return_value = execute_external_command(tokens);
   } else if (tokens.size() != 0) {
@@ -418,7 +455,7 @@ int execute_line(vector<string>& tokens, map<string, command>& builtins) {
 
 // Substitutes any tokens that start with a $ with their appropriate value, or
 // with an empty string if no match is found.
-void variable_substitution(vector<string>& tokens) {
+void variable_substitution(vector<string> &tokens) {
   vector<string>::iterator token;
 
   for (token = tokens.begin(); token != tokens.end(); ++token) {
@@ -438,11 +475,12 @@ void variable_substitution(vector<string>& tokens) {
 
 // Examines each token and sets an env variable for any that are in the form
 // of key=value.
-void local_variable_assignment(vector<string>& tokens) {
+void local_variable_assignment(vector<string> &tokens) {
   vector<string>::iterator token = tokens.begin();
 
   // Return if the token is alias so it wouldn't remove the key=value
-  if (*token == "alias") return;
+  if (*token == "alias")
+    return;
 
   while (token != tokens.end()) {
     string::size_type eq_pos = token->find("=");
@@ -462,7 +500,7 @@ void local_variable_assignment(vector<string>& tokens) {
 }
 
 // Manipulate tokens if the command is !! or !#
-void tokennizeForSpecialHistory(vector<string>& tokens, char* line) {
+void tokennizeForSpecialHistory(vector<string> &tokens, char *line) {
   string tmpline = "";
 
   event_list.pop_back();
@@ -517,7 +555,7 @@ int main() {
   builtins["history"] = &com_history;
 
   // Specify the characters that readline uses to delimit words
-  rl_basic_word_break_characters = (char*)WORD_DELIMITERS;
+  rl_basic_word_break_characters = (char *)WORD_DELIMITERS;
 
   // Tell the completer that we want to try completion first
   rl_attempted_completion_function = word_completion;
@@ -531,7 +569,7 @@ int main() {
     string prompt = get_prompt(return_value);
 
     // Read a line of input from the user
-    char* line = readline(prompt.c_str());
+    char *line = readline(prompt.c_str());
 
     // If the pointer is null, then an EOF has been received (ctrl-d)
     if (!line) {
@@ -550,7 +588,7 @@ int main() {
 
       // Check if the command is in the alias.
       // If so replace the tokens with the commands
-      map<string, vector<string> >::iterator aliasIter =
+      map<string, vector<string>>::iterator aliasIter =
           alias_list.find(tokens[0]);
       if (aliasIter != alias_list.end()) {
         tokens = aliasIter->second;
